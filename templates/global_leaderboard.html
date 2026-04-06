@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+
+{% block title %}Глобальный рейтинг — MOEX Trainer{% endblock %}
+
+{% block content %}
+<section class="page-head">
+    <h1 class="page-title">Глобальный рейтинг</h1>
+    <p class="page-subtitle">Рейтинг строится по общему финансовому результату пользователей на всём аккаунте, без привязки к комнатам.</p>
+</section>
+
+<section class="card">
+    <div class="page-head page-head--row" style="margin-bottom:0.8rem;">
+        <div>
+            <h2 class="card-title" style="margin-bottom:0.2rem;">Топ участников</h2>
+            <p class="muted" id="global-leaderboard-updated">Обновление...</p>
+        </div>
+        <button type="button" id="global-leaderboard-refresh" class="btn btn-secondary btn-icon">
+            <span class="btn-icon-glyph" aria-hidden="true">↻</span>
+            <span class="btn-icon-text">Обновить</span>
+        </button>
+    </div>
+    <div id="global-leaderboard-table-wrap">
+        <p class="muted">Загрузка рейтинга...</p>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function formatMoney(v) { return Number(v||0).toLocaleString('ru-RU', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ₽'; }
+function formatDateTime(v) {
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+async function loadGlobalMoneyLeaderboard() {
+    const wrap = document.getElementById('global-leaderboard-table-wrap');
+    const updated = document.getElementById('global-leaderboard-updated');
+    if (!wrap) return;
+    wrap.innerHTML = '<p class="muted">Загрузка рейтинга...</p>';
+    try {
+        const res = await fetch('/api/leaderboard/global?limit=100', { credentials: 'same-origin' });
+        const isJson = (res.headers.get('content-type') || '').includes('application/json');
+        const data = isJson ? await res.json() : { error: 'Требуется повторный вход в систему.' };
+        if (!res.ok) throw new Error(data?.error || 'Не удалось загрузить рейтинг');
+        const rows = Array.isArray(data.leaderboard) ? data.leaderboard : [];
+        if (updated) {
+            updated.textContent = `Обновлено: ${formatDateTime(data.updated_at)}`;
+        }
+        if (!rows.length) {
+            const reason = data?.error ? ` ${data.error}` : '';
+            wrap.innerHTML = `<p class="muted">Пока нет данных для построения глобального рейтинга.${reason}</p>`;
+            return;
+        }
+        wrap.innerHTML = `
+            <div class="table-wrap">
+                <table class="positions-table positions-table--leaderboard">
+                    <thead>
+                        <tr>
+                            <th>Место</th>
+                            <th>Участник</th>
+                            <th>Прибыль на аккаунте</th>
+                            <th>Доходность аккаунта</th>
+                            <th>Стоимость портфеля</th>
+                            <th>Сделок</th>
+                            <th>Последняя активность</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map((row) => `
+                            <tr>
+                                <td><strong>#${row.global_rank}</strong></td>
+                                <td>${row.username}</td>
+                                <td class="${Number(row.account_total_profit || 0) >= 0 ? 'positive' : 'negative'}">${formatMoney(row.account_total_profit)}</td>
+                                <td class="${Number(row.account_total_profit_pct || 0) >= 0 ? 'positive' : 'negative'}">${Number(row.account_total_profit_pct || 0).toFixed(2)}%</td>
+                                <td>${formatMoney(row.total_value)}</td>
+                                <td>${Number(row.transactions_count || 0)}</td>
+                                <td>${formatDateTime(row.last_activity_at)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    } catch (error) {
+        wrap.innerHTML = `<p class="negative">${error.message || 'Ошибка загрузки'}</p>`;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadGlobalMoneyLeaderboard();
+    const refreshBtn = document.getElementById('global-leaderboard-refresh');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            refreshBtn.classList.add('btn-loading');
+            loadGlobalMoneyLeaderboard().finally(() => refreshBtn.classList.remove('btn-loading'));
+        });
+    }
+});
+</script>
+{% endblock %}

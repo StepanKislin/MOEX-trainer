@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% block title %}Регистрация — MOEX Trainer{% endblock %}
+
+{% block content %}
+<div id="register-server-data" data-error="{{ (error or none)|tojson }}" hidden></div>
+
+<div class="auth-container">
+    <div class="auth-card auth-card--register">
+        <div class="auth-header">
+            <h1 class="auth-title">Регистрация участника</h1>
+            <p class="auth-subtitle">Создайте аккаунт ученика для прохождения стресс-тестов</p>
+        </div>
+        <form method="POST" class="auth-form" id="register-form" novalidate>
+            <div class="form-group">
+                <label for="role" class="form-label">Роль</label>
+                <select id="role" name="role" class="form-input">
+                    <option value="student" {% if (request.form.role or 'student') == 'student' %}selected{% endif %}>Ученик</option>
+                    <option value="teacher" {% if request.form.role == 'teacher' %}selected{% endif %}>Учитель</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="username" class="form-label">Логин</label>
+                <input type="text" id="username" name="username" class="form-input"
+                       placeholder="ivanov" required autocomplete="username"
+                       pattern="[a-zA-Z0-9_]{3,20}" title="3-20 символов, буквы, цифры, _"
+                       value="{{ request.form.username or '' }}">
+                <small class="form-hint">Только латиница, цифры и подчёркивание</small>
+            </div>
+            <div class="form-group">
+                <label for="email" class="form-label">Email</label>
+                <input type="email" id="email" name="email" class="form-input"
+                       placeholder="ivanov@example.com" required autocomplete="email"
+                       value="{{ request.form.email or '' }}">
+            </div>
+            <div id="teacher-fields" {% if (request.form.role or 'student') != 'teacher' %}hidden{% endif %}>
+                <div class="form-group">
+                    <label for="school_name" class="form-label">Школа</label>
+                    <input type="text" id="school_name" name="school_name" class="form-input"
+                           placeholder="Например, Лицей № 12" value="{{ request.form.school_name or '' }}">
+                </div>
+                <div class="form-group">
+                    <label for="school_code" class="form-label">Код школы</label>
+                    <input type="text" id="school_code" name="school_code" class="form-input"
+                           placeholder="Код от администратора" value="{{ request.form.school_code or '' }}">
+                    <small class="form-hint">Для учителя нужен действующий код школы.</small>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="password" class="form-label">Пароль</label>
+                <div class="password-wrap">
+                    <input type="password" id="password" name="password" class="form-input"
+                           placeholder="••••••••" required autocomplete="new-password" minlength="6">
+                    <button type="button" class="password-toggle" aria-label="Показать пароль">👁️</button>
+                </div>
+                <small class="form-hint">Минимум 6 символов</small>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block btn-lg" id="register-btn">
+                <span class="btn-text">Создать аккаунт</span><span class="btn-loader" style="display:none">⏳</span>
+            </button>
+        </form>
+        <div class="auth-footer">
+            <p>Уже есть аккаунт? <a href="{{ url_for('login') }}">Войти</a></p>
+            <p class="muted" style="font-size:0.85rem">Учитель регистрируется по школьному коду.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getServerVar(name, fallback = null) {
+    const el = document.getElementById('register-server-data');
+    if (!el) return fallback;
+    const val = el.dataset[name];
+    if (val === undefined || val === 'null') return fallback;
+    try { return JSON.parse(val); } catch { return fallback; }
+}
+
+function centerToast(message, type = 'error') {
+    let host = document.getElementById('toast-host');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'toast-host'; host.className = 'toast-host toast-host--center';
+        document.body.appendChild(host);
+    } else host.classList.add('toast-host--center');
+    showToast(message, type);
+}
+
+function syncTeacherFields() {
+    const role = document.getElementById('role')?.value || 'student';
+    const fields = document.getElementById('teacher-fields');
+    if (fields) fields.hidden = role !== 'teacher';
+}
+
+document.querySelector('.password-toggle')?.addEventListener('click', function() {
+    const input = document.getElementById('password');
+    const isPass = input.type === 'password';
+    input.type = isPass ? 'text' : 'password';
+    this.textContent = isPass ? '🙈' : '👁️';
+    this.setAttribute('aria-label', isPass ? 'Скрыть пароль' : 'Показать пароль');
+});
+
+document.getElementById('register-form')?.addEventListener('submit', function(e) {
+    const username = document.getElementById('username').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const role = document.getElementById('role').value;
+    const schoolName = document.getElementById('school_name')?.value.trim() || '';
+    const schoolCode = document.getElementById('school_code')?.value.trim() || '';
+    const emailPattern = /^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i;
+
+    if (username.length < 3) { e.preventDefault(); centerToast('Логин ≥ 3 символов'); return; }
+    if (!emailPattern.test(email)) { e.preventDefault(); centerToast('Неверный формат почты'); return; }
+    if (password.length < 6) { e.preventDefault(); centerToast('Пароль ≥ 6 символов'); return; }
+    if (role === 'teacher' && schoolName.length < 2) { e.preventDefault(); centerToast('Для учителя нужна школа'); return; }
+    if (role === 'teacher' && schoolCode.length < 6) { e.preventDefault(); centerToast('Для учителя нужен код школы'); return; }
+
+    document.getElementById('register-btn').classList.add('btn-loading');
+    document.querySelector('.btn-text').style.display = 'none';
+    document.querySelector('.btn-loader').style.display = 'inline';
+});
+
+document.getElementById('role')?.addEventListener('change', syncTeacherFields);
+syncTeacherFields();
+
+const registerError = getServerVar('error');
+if (registerError) centerToast(registerError, 'error');
+
+document.getElementById('username')?.focus();
+</script>
+{% endblock %}

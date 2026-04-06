@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="MOEX Trainer — симулятор портфеля и стресс-тесты по российским акциям">
+    <title>{% block title %}MOEX Trainer{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <a class="skip-link" href="#main">К содержимому</a>
+    <header class="navbar">
+        <div class="navbar-inner">
+            <a href="/" class="nav-brand" aria-label="MOEX Trainer — на главную">
+                <span class="nav-brand-mark" aria-hidden="true"></span>
+                <span class="nav-brand-text">MOEX Trainer</span>
+            </a>
+            <nav class="nav-links" aria-label="Основное меню">
+                {% if session.get('is_admin') %}
+                <a href="{{ url_for('dashboard') }}" class="nav-link{% if request.path.startswith('/dashboard') %} nav-link--active{% endif %}">
+                    Кабинет
+                </a>
+                <a href="{{ url_for('global_leaderboard_page') }}" class="nav-link{% if request.path == '/leaderboard' %} nav-link--active{% endif %}">
+                    Глобальный рейтинг
+                </a>
+                <a href="{{ url_for('admin_panel') }}" class="nav-link{% if request.path.startswith('/admin') %} nav-link--active{% endif %}">
+                    Админка
+                </a>
+                {% else %}
+                <a href="/" class="nav-link{% if request.path == '/' %} nav-link--active{% endif %}">Акции</a>
+                <a href="/portfolio" class="nav-link{% if request.path == '/portfolio' %} nav-link--active{% endif %}">Портфель</a>
+                {% if session.get('user_id') and not session.get('is_teacher') %}
+                <a href="/room" class="nav-link{% if request.path == '/room' %} nav-link--active{% endif %}">Комната</a>
+                {% endif %}
+                <a href="/stress" class="nav-link{% if request.path == '/stress' %} nav-link--active{% endif %}">Стресс-тесты</a>
+                {% if session.get('user_id') %}
+                <a href="{{ url_for('global_leaderboard_page') }}" class="nav-link{% if request.path == '/leaderboard' %} nav-link--active{% endif %}">
+                    Глобальный рейтинг
+                </a>
+                <a href="{{ url_for('dashboard') }}" class="nav-link{% if request.path.startswith('/dashboard') %} nav-link--active{% endif %}">
+                    Кабинет
+                </a>
+                {% if session.get('is_admin') %}
+                <a href="{{ url_for('admin_panel') }}" class="nav-link{% if request.path.startswith('/admin') %} nav-link--active{% endif %}">
+                    Админка
+                </a>
+                {% endif %}
+                {% endif %}
+                {% endif %}
+            </nav>
+            <div class="nav-right">
+                {% if session.get('user_id') %}
+                    <span class="nav-user">
+                        {{ '🛡' if session.get('is_admin') else ('👨‍🏫' if session.get('is_teacher') else '👤') }}
+                        {% if session.get('school_name') %}
+                            <span class="badge badge-secondary">{{ session.get('school_name') }}</span>
+                        {% endif %}
+                    </span>
+                    <a href="{{ url_for('logout') }}" class="nav-link">Выйти</a>
+                {% else %}
+                    <a href="{{ url_for('login') }}" class="nav-link{% if request.path == '/login' %} nav-link--active{% endif %}">Вход</a>
+                    <a href="{{ url_for('register') }}" class="nav-link{% if request.path == '/register' %} nav-link--active{% endif %}">Регистрация</a>
+                {% endif %}
+                <button type="button" id="theme-toggle" class="theme-btn" aria-label="Переключить тему">🌙</button>
+            </div>
+        </div>
+    </header>
+
+    <main id="main" class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

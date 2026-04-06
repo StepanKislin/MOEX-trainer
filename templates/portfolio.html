@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+
+{% block title %}Портфель — MOEX Trainer{% endblock %}
+
+{% block content %}
+<div class="page-head page-head--row">
+    <div>
+        <h1 class="page-title">Портфель</h1>
+        <p class="page-subtitle">Ваши активы, их текущая стоимость и общий результат</p>
+    </div>
+    <button type="button" class="btn btn-secondary" onclick="refreshPortfolio()">
+        <span aria-hidden="true">↻</span> Обновить
+    </button>
+</div>
+
+<div class="portfolio-summary">
+    <div class="summary-card">
+        <div class="summary-label summary-label--with-help">
+            <span>Общая стоимость</span>
+            <span class="info-chip" tabindex="0" aria-label="Что означает общая стоимость">?</span>
+            <span class="info-tooltip" role="tooltip">
+                Это все деньги в портфеле сейчас: денежные средства плюс текущая рыночная стоимость всех купленных бумаг.
+            </span>
+        </div>
+        <div class="summary-value" id="total-value">—</div>
+    </div>
+    <div class="summary-card">
+        <div class="summary-label summary-label--with-help">
+            <span>Денежные средства</span>
+            <span class="info-chip" tabindex="0" aria-label="Что означает денежные средства">?</span>
+            <span class="info-tooltip" role="tooltip">
+                Это свободные деньги на счёте, которые пока не вложены в акции и доступны для новых покупок.
+            </span>
+        </div>
+        <div class="summary-value summary-value--muted" id="portfolio-cash">—</div>
+    </div>
+    <div class="summary-card" id="profit-card">
+        <div class="summary-label summary-label--with-help">
+            <span>Прибыль / убыток</span>
+            <span class="info-chip" tabindex="0" aria-label="Что означает прибыль или убыток">?</span>
+            <span class="info-tooltip" role="tooltip">
+                Показывает, насколько портфель сейчас выше или ниже стартового капитала с учётом свободных денег и стоимости бумаг.
+            </span>
+        </div>
+        <div class="summary-value" id="total-profit">—</div>
+        <div class="summary-foot muted" id="total-profit-pct">—</div>
+    </div>
+    <div class="summary-card" id="sharpe-card">
+        <div class="summary-label summary-label--with-help">
+            <span>Коэффициент устойчивости</span>
+            <span class="info-chip" tabindex="0" aria-label="Что означает коэффициент Sharpe">?</span>
+            <span class="info-tooltip" role="tooltip">
+                Sharpe показывает, насколько хорошо портфель вознаграждает за риск: чем выше, тем лучше; отрицательное значение означает, что риск не окупается доходностью.
+            </span>
+        </div>
+        <div class="summary-value" id="sharpe-ratio">—</div>
+        <div class="summary-foot muted" id="sharpe-hint"></div>
+    </div>
+</div>
+
+<section class="card" aria-label="Проверка диверсификации" style="margin-bottom: 1rem;">
+    <h2 class="card-title" style="margin-bottom: 0.5rem;">Проверка правила 5–10 активов</h2>
+    <p class="muted" id="diversification-status">—</p>
+</section>
+
+<section class="chart-panel chart-panel--portfolio">
+    <div class="chart-panel-head">
+        <div>
+            <h2 class="chart-panel-title">Динамика стоимости портфеля</h2>
+            <p class="chart-panel-subtitle">График начинается с первой покупки и показывает, как менялась стоимость портфеля по мере сделок и движения цен.</p>
+        </div>
+    </div>
+    <div class="chart-meta" id="portfolio-history-meta"></div>
+    <div class="chart-layout chart-layout--stack">
+        <div class="chart-canvas-wrap">
+            <svg id="portfolio-history-svg" class="line-chart" viewBox="0 0 640 320" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+    </div>
+</section>
+
+<section class="chart-panel chart-panel--portfolio">
+    <div class="chart-panel-head">
+        <div>
+            <h2 class="chart-panel-title">Прогноз стоимости портфеля</h2>
+            <p class="chart-panel-subtitle">Оценка по исторической динамике бумаг в портфеле.</p>
+        </div>
+    </div>
+    <div class="forecast-grid" id="portfolio-forecast-grid"></div>
+</section>
+
+<div class="table-card">
+    <div class="table-card-head">
+        <h2 class="table-card-title">Позиции</h2>
+    </div>
+    <div class="table-scroll">
+        <table class="data-table data-table--portfolio">
+            <thead>
+                <tr>
+                    <th>Акция</th>
+                    <th>Количество, шт.</th>
+                    <th>Средняя цена покупки</th>
+                    <th>Текущая цена</th>
+                    <th>Стоимость позиции</th>
+                    <th>Изменение, %</th>
+                    <th>Прибыль / убыток, ₽</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="positions-body"></tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}

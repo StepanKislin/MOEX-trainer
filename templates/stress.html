@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block title %}Стресс-тесты — MOEX Trainer{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <h1 class="page-title">Стресс-сценарии</h1>
+    <p class="page-subtitle">Оцените, как мог бы измениться рыночный вес позиций при исторических шоках</p>
+</div>
+
+<div class="scenarios-grid">
+    {% for scenario in scenarios %}
+    <article class="scenario-card" data-slug="{{ scenario.slug }}">
+        <div class="scenario-icon" aria-hidden="true">
+            {% if '2014' in scenario.slug %}📉{% elif 'pandemic' in scenario.slug %}🦠{% else %}⚡{% endif %}
+        </div>
+        <h3 class="scenario-title">{{ scenario.name }}</h3>
+        <p class="scenario-text">{{ scenario.description }}</p>
+        <button type="button" class="btn btn-primary btn-block btn-apply">Рассчитать</button>
+    </article>
+    {% else %}
+    <p class="muted">Сценарии пока не добавлены.</p>
+    {% endfor %}
+</div>
+
+<section id="stress-result" class="stress-panel" style="display: none;" aria-live="polite">
+    <h2 class="stress-panel-title">Результат</h2>
+    <div id="stress-content"></div>
+</section>
+
+{% endblock %}

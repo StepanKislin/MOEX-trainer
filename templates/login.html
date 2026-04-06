@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block title %}Вход — MOEX Trainer{% endblock %}
+
+{% block content %}
+<!-- Серверные переменные в data-атрибутах -->
+<div id="login-server-data" data-error="{{ (error or none)|tojson }}" data-success="{{ (success or none)|tojson }}" hidden></div>
+
+<div class="auth-container">
+    <div class="auth-card auth-card--login">
+        <div class="auth-header">
+            <h1 class="auth-title">Вход в систему</h1>
+            <p class="auth-subtitle">MOEX Investment Trainer</p>
+        </div>
+        <form method="POST" class="auth-form" id="login-form" novalidate>
+            <div class="form-group">
+                <label for="username" class="form-label">Логин</label>
+                <input type="text" id="username" name="username" class="form-input" 
+                       placeholder="ivanov" required autocomplete="username" 
+                       pattern="[a-zA-Z0-9_]{3,20}" title="3-20 символов, буквы, цифры, _"
+                       value="{{ request.form.username or '' }}">
+                <small class="form-hint">Только латиница, цифры и подчёркивание</small>
+            </div>
+            <div class="form-group">
+                <label for="password" class="form-label">Пароль</label>
+                <div class="password-wrap">
+                    <input type="password" id="password" name="password" class="form-input" 
+                           placeholder="••••••••" required autocomplete="current-password" minlength="6">
+                    <button type="button" class="password-toggle" aria-label="Показать пароль">👁️</button>
+                </div>
+                <small class="form-hint">Минимум 6 символов</small>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block btn-lg" id="login-btn">
+                <span class="btn-text">Войти</span><span class="btn-loader" style="display:none">⏳</span>
+            </button>
+        </form>
+        <div class="auth-footer">
+            <p>Нет аккаунта? <a href="{{ url_for('register') }}">Зарегистрироваться</a></p>
+            <p class="muted">Учитель использует заранее выданный аккаунт.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getServerVar(name, fallback = null) {
+    const el = document.getElementById('login-server-data');
+    if (!el) return fallback;
+    const val = el.dataset[name];
+    if (val === undefined || val === 'null') return fallback;
+    try { return JSON.parse(val); } catch { return fallback; }
+}
+
+function centerToast(message, type = 'error') {
+    let host = document.getElementById('toast-host');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'toast-host'; host.className = 'toast-host toast-host--center';
+        document.body.appendChild(host);
+    } else host.classList.add('toast-host--center');
+    showToast(message, type);
+}
+
+document.querySelector('.password-toggle')?.addEventListener('click', function() {
+    const input = document.getElementById('password');
+    const isPass = input.type === 'password';
+    input.type = isPass ? 'text' : 'password';
+    this.textContent = isPass ? '🙈' : '👁️';
+    this.setAttribute('aria-label', isPass ? 'Скрыть пароль' : 'Показать пароль');
+});
+
+document.getElementById('login-form')?.addEventListener('submit', function(e) {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    if (username.length < 3) { e.preventDefault(); centerToast('Логин ≥ 3 символов'); return; }
+    if (password.length < 6) { e.preventDefault(); centerToast('Пароль ≥ 6 символов'); return; }
+    document.getElementById('login-btn').classList.add('btn-loading');
+    document.querySelector('.btn-text').style.display = 'none';
+    document.querySelector('.btn-loader').style.display = 'inline';
+});
+
+const loginError = getServerVar('error');
+const loginSuccess = getServerVar('success');
+if (loginError) centerToast(loginError, 'error');
+if (loginSuccess) centerToast(loginSuccess, 'success');
+
+document.getElementById('username')?.focus();
+</script>
+{% endblock %}

@@ -1,0 +1,257 @@
+{% extends 'base.html' %}
+
+{% block title %}Админка — MOEX Trainer{% endblock %}
+
+{% block content %}
+<!-- Выносим серверные переменные в data-атрибуты для безопасного доступа из JS -->
+<div id="admin-server-data" 
+     data-error="{{ (error or none)|tojson }}" 
+     data-success="{{ (success or none)|tojson }}"
+     data-last-action="{{ (last_action or none)|tojson }}"
+     hidden></div>
+
+<section class="page-head page-head--row">
+    <div>
+        <h1 class="page-title">Админка</h1>
+        <p class="page-subtitle">Здесь администратор создаёт коды школ, добавляет компании и заводит глобальные стресс-ситуации.</p>
+    </div>
+</section>
+
+<div class="dashboard-grid">
+    <section class="card">
+        <h2 class="card-title" id="security-form-title">Добавить компанию</h2>
+        <form method="POST" class="form-stack">
+            <input type="hidden" name="action" value="security" id="security-form-action">
+            <input type="hidden" name="security_id" value="" id="security-id">
+            <div class="grid-two">
+                <div class="form-group">
+                    <label class="form-label" for="security-secid">Тикер</label>
+                    <input id="security-secid" name="secid" class="form-input" placeholder="Например, VTBR" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="security-lot-size">Лот</label>
+                    <input id="security-lot-size" name="lot_size" type="number" min="1" value="1" class="form-input" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="security-shortname">Название компании</label>
+                <input id="security-shortname" name="shortname" class="form-input" placeholder="Например, ВТБ" required>
+            </div>
+            <div class="grid-two">
+                <div class="form-group">
+                    <label class="form-label" for="security-sector">Сектор</label>
+                    <input id="security-sector" name="sector" class="form-input" placeholder="Например, Финансы">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="security-currency">Валюта</label>
+                    <input id="security-currency" name="currency" class="form-input" value="RUB">
+                </div>
+            </div>
+            <div class="grid-two">
+                <div class="form-group">
+                    <label class="form-label" for="security-dividend">Дивиденды, %</label>
+                    <input id="security-dividend" name="dividend_yield" type="number" step="0.1" min="0" class="form-input" placeholder="Например, 8.5">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="security-volatility">Волатильность</label>
+                    <select id="security-volatility" name="volatility_level" class="form-input">
+                        <option value="">Не указана</option>
+                        <option value="низкая">Низкая</option>
+                        <option value="средняя">Средняя</option>
+                        <option value="высокая">Высокая</option>
+                    </select>
+                </div>
+            </div>
+            <div class="list-actions">
+                <button type="submit" class="btn btn-primary" id="security-submit-btn">Добавить бумагу</button>
+                <button type="button" class="btn btn-secondary" id="security-reset-btn">Сбросить</button>
+            </div>
+        </form>
+        {% if error and last_action in ['security', 'update_security', 'delete_security'] %}
+        <p class="negative" style="margin-top: 0.75rem;">{{ error }}</p>
+        {% endif %}
+        {% if success and last_action in ['security', 'update_security', 'delete_security'] %}
+        <p class="positive" style="margin-top: 0.75rem;">{{ success }}</p>
+        {% endif %}
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Выдать код школе</h2>
+        <form method="POST" class="form-stack">
+            <input type="hidden" name="action" value="school_code">
+            <div class="form-group">
+                <label class="form-label" for="school-name">Школа</label>
+                <input id="school-name" name="school_name" class="form-input" placeholder="Например, Лицей № 12" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="school-code">Код школы</label>
+                <input id="school-code" name="school_code" class="form-input" placeholder="Можно оставить пустым для автогенерации">
+            </div>
+            <button type="submit" class="btn btn-primary">Создать код</button>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title" id="scenario-form-title">Создать глобальную стресс-ситуацию</h2>
+        <form method="POST" class="form-stack">
+            <input type="hidden" name="action" value="scenario" id="scenario-form-action">
+            <input type="hidden" name="scenario_id" value="" id="scenario-id">
+            <div class="form-group">
+                <label class="form-label" for="scenario-name">Название сценария</label>
+                <input id="scenario-name" name="name" class="form-input" placeholder="Например, Санкционный шок 2022" required>
+            </div>
+            <div class="grid-two">
+                <div class="form-group">
+                    <label class="form-label" for="scenario-start">Начало периода</label>
+                    <input id="scenario-start" name="start_date" type="date" min="2013-01-01" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="scenario-end">Конец периода</label>
+                    <input id="scenario-end" name="end_date" type="date" min="2013-01-01" class="form-input" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="scenario-description">Описание</label>
+                <textarea id="scenario-description" name="description" class="form-input" rows="3" placeholder="Что происходило на рынке"></textarea>
+            </div>
+            <div class="list-actions">
+                <button type="submit" class="btn btn-primary" id="scenario-submit-btn">Создать глобальный сценарий</button>
+                <button type="button" class="btn btn-secondary" id="scenario-reset-btn">Сбросить</button>
+            </div>
+        </form>
+        {% if error and last_action in ['scenario', 'update_scenario', 'delete_scenario'] %}
+        <p class="negative" style="margin-top: 0.75rem;" id="scenario-form-error">{{ error }}</p>
+        {% endif %}
+        {% if success and last_action in ['scenario', 'update_scenario', 'delete_scenario'] %}
+        <p class="positive" style="margin-top: 0.75rem;">{{ success }}</p>
+        {% endif %}
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Выданные коды</h2>
+        {% if school_codes %}
+        <div class="table-scroll">
+            <table class="data-table">
+                <thead><tr><th>Школа</th><th>Код</th><th>Статус</th><th>Создан</th><th>Кем</th><th>Последнее использование</th></tr></thead>
+                <tbody>{% for item in school_codes %}<tr><td>{{ item.school_name }}</td><td><code>{{ item.school_code }}</code></td><td>{{ 'Активен' if item.is_active else 'Выключен' }}</td><td>{{ item.created_at.strftime('%d.%m.%Y %H:%M') if item.created_at else '—' }}</td><td>{{ item.created_by_username or '—' }}</td><td>{{ item.last_used_at.strftime('%d.%m.%Y %H:%M') if item.last_used_at else '—' }}</td></tr>{% endfor %}</tbody>
+            </table>
+        </div>
+        {% else %}<p class="muted">Коды школ пока не создавались.</p>{% endif %}
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Общий список компаний</h2>
+        {% if securities %}
+        <div class="table-scroll">
+            <table class="data-table">
+                <thead><tr><th>Тикер</th><th>Название</th><th>Сектор</th><th>Лот</th><th>Дивиденды</th><th>Волатильность</th><th>Валюта</th><th>Действия</th></tr></thead>
+                <tbody>{% for item in securities %}<tr><td><strong>{{ item.secid }}</strong></td><td>{{ item.shortname }}</td><td>{{ item.sector or '—' }}</td><td>{{ item.lot_size or 1 }}</td><td>{{ ('%.1f%%'|format(item.dividend_yield)) if item.dividend_yield is not none else '—' }}</td><td>{{ item.volatility_level or '—' }}</td><td>{{ item.currency or 'RUB' }}</td><td><div class="list-actions"><button type="button" class="btn btn-sm btn-outline edit-security-btn" data-security-id="{{ item.id }}" data-secid="{{ item.secid }}" data-shortname="{{ item.shortname }}" data-sector="{{ item.sector or '' }}" data-currency="{{ item.currency or 'RUB' }}" data-lot-size="{{ item.lot_size or 1 }}" data-dividend-yield="{{ item.dividend_yield if item.dividend_yield is not none else '' }}" data-volatility-level="{{ item.volatility_level or '' }}">Редактировать</button><form method="POST" class="inline-form admin-inline-form" onsubmit="return confirm('Удалить компанию {{ item.secid }}?');"><input type="hidden" name="action" value="delete_security"><input type="hidden" name="security_id" value="{{ item.id }}"><button type="submit" class="btn btn-sm btn-danger">Удалить</button></form></div></td></tr>{% endfor %}</tbody>
+            </table>
+        </div>
+        {% else %}<p class="muted">Компании пока не добавлены.</p>{% endif %}
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Глобальные стресс-ситуации</h2>
+        {% if scenarios %}
+        <div class="table-scroll">
+            <table class="data-table">
+                <thead><tr><th>Название</th><th>Slug</th><th>Период</th><th>Действия</th></tr></thead>
+                <tbody>{% for item in scenarios %}<tr><td>{{ item.name }}</td><td><code>{{ item.slug }}</code></td><td>{{ item.start_date.strftime('%d.%m.%Y') if item.start_date else '—' }} — {{ item.end_date.strftime('%d.%m.%Y') if item.end_date else '—' }}</td><td><div class="list-actions"><button type="button" class="btn btn-sm btn-outline edit-scenario-btn" data-scenario-id="{{ item.id }}" data-name="{{ item.name }}" data-description="{{ item.description or '' }}" data-start-date="{{ item.start_date.isoformat() if item.start_date else '' }}" data-end-date="{{ item.end_date.isoformat() if item.end_date else '' }}">Редактировать</button><form method="POST" class="inline-form admin-inline-form" onsubmit="return confirm('Удалить сценарий «{{ item.name }}»?');"><input type="hidden" name="action" value="delete_scenario"><input type="hidden" name="scenario_id" value="{{ item.id }}"><button type="submit" class="btn btn-sm btn-danger">Удалить</button></form></div></td></tr>{% endfor %}</tbody>
+            </table>
+        </div>
+        {% else %}<p class="muted">Глобальные стресс-сценарии пока не добавлены.</p>{% endif %}
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// --- Утилита для безопасного чтения серверных переменных ---
+function getServerVar(name, fallback = null) {
+    const el = document.getElementById('admin-server-data');
+    if (!el) return fallback;
+    const val = el.dataset[name];
+    if (val === undefined || val === 'null') return fallback;
+    try { return JSON.parse(val); } catch { return fallback; }
+}
+
+// --- Инициализация тостов ---
+const adminError = getServerVar('error');
+const adminSuccess = getServerVar('success');
+const lastAction = getServerVar('lastAction', '');
+
+if (adminError) showToast(adminError, 'error');
+if (adminSuccess) showToast(adminSuccess, 'success');
+
+// --- Сброс форм ---
+function resetSecurityForm() {
+    document.getElementById('security-form-title').textContent = 'Добавить компанию';
+    document.getElementById('security-form-action').value = 'security';
+    document.getElementById('security-id').value = '';
+    ['security-secid','security-shortname','security-sector','security-dividend'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+    document.getElementById('security-currency').value = 'RUB';
+    document.getElementById('security-lot-size').value = '1';
+    document.getElementById('security-volatility').value = '';
+    document.getElementById('security-submit-btn').textContent = 'Добавить бумагу';
+}
+
+function resetScenarioForm() {
+    document.getElementById('scenario-form-title').textContent = 'Создать глобальную стресс-ситуацию';
+    document.getElementById('scenario-form-action').value = 'scenario';
+    document.getElementById('scenario-id').value = '';
+    ['scenario-name','scenario-start','scenario-end','scenario-description'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+    document.getElementById('scenario-submit-btn').textContent = 'Создать глобальный сценарий';
+}
+
+document.getElementById('security-reset-btn')?.addEventListener('click', resetSecurityForm);
+document.getElementById('scenario-reset-btn')?.addEventListener('click', resetScenarioForm);
+
+// --- Редактирование компаний ---
+document.querySelectorAll('.edit-security-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.getElementById('security-form-title').textContent = 'Редактировать компанию';
+        document.getElementById('security-form-action').value = 'update_security';
+        document.getElementById('security-id').value = btn.dataset.securityId || '';
+        document.getElementById('security-secid').value = btn.dataset.secid || '';
+        document.getElementById('security-shortname').value = btn.dataset.shortname || '';
+        document.getElementById('security-sector').value = btn.dataset.sector || '';
+        document.getElementById('security-currency').value = btn.dataset.currency || 'RUB';
+        document.getElementById('security-lot-size').value = btn.dataset.lotSize || '1';
+        document.getElementById('security-dividend').value = btn.dataset.dividendYield || '';
+        document.getElementById('security-volatility').value = btn.dataset.volatilityLevel || '';
+        document.getElementById('security-submit-btn').textContent = 'Сохранить изменения';
+        document.getElementById('security-secid')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+});
+
+// --- Редактирование сценариев ---
+document.querySelectorAll('.edit-scenario-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.getElementById('scenario-form-title').textContent = 'Редактировать сценарий';
+        document.getElementById('scenario-form-action').value = 'update_scenario';
+        document.getElementById('scenario-id').value = btn.dataset.scenarioId || '';
+        document.getElementById('scenario-name').value = btn.dataset.name || '';
+        document.getElementById('scenario-start').value = btn.dataset.startDate || '';
+        document.getElementById('scenario-end').value = btn.dataset.endDate || '';
+        document.getElementById('scenario-description').value = btn.dataset.description || '';
+        document.getElementById('scenario-submit-btn').textContent = 'Сохранить изменения';
+        document.getElementById('scenario-name')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+});
+
+// --- Подсветка ошибок дат в сценариях ---
+if (adminError && ['scenario', 'update_scenario'].includes(lastAction)) {
+    if (adminError.includes('Дата начала') || adminError.includes('период')) {
+        ['scenario-start', 'scenario-end'].forEach(id => {
+            document.getElementById(id)?.classList.add('form-input--error');
+        });
+        document.getElementById('scenario-start')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,349 @@
+{% extends 'base.html' %}
+
+{% block title %}Комната — MOEX Trainer{% endblock %}
+
+{% block content %}
+<section class="page-head page-head--row">
+    <div>
+        <h1 class="page-title">Комната</h1>
+        <p class="page-subtitle" id="room-page-subtitle">Здесь ученик проходит задание учителя с отдельным капиталом и отдельными сделками.</p>
+    </div>
+    <button type="button" class="btn btn-secondary" id="room-refresh-btn">
+        <span aria-hidden="true">↻</span> Обновить
+    </button>
+</section>
+
+<section id="room-empty-state" class="card" hidden>
+    <h2 class="card-title">Активной комнаты нет</h2>
+    <p class="muted">Когда вы войдёте в активную комнату учителя, здесь появится отдельный режим с собственным стартовым капиталом и списком компаний.</p>
+</section>
+
+<div id="room-workspace" hidden>
+    <div class="portfolio-summary">
+        <div class="summary-card">
+            <div class="summary-label">Комната</div>
+            <div class="summary-value" id="room-title">—</div>
+            <div class="summary-foot muted" id="room-code">—</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-label">Стартовый капитал</div>
+            <div class="summary-value" id="room-initial-balance-display">—</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-label">Свободные средства</div>
+            <div class="summary-value" id="room-cash">—</div>
+        </div>
+        <div class="summary-card" id="room-profit-card">
+            <div class="summary-label">Результат в комнате</div>
+            <div class="summary-value" id="room-total-profit">—</div>
+            <div class="summary-foot muted" id="room-total-profit-pct">—</div>
+        </div>
+    </div>
+
+    <section class="hero-stats" aria-label="Компании комнаты">
+        <div class="stat-card stat-card--primary">
+            <div class="stat-label">Доступные компании</div>
+            <div class="stat-value" id="room-allowed-count">—</div>
+            <div class="stat-sub muted" id="room-allowed-list"></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Исторический период</div>
+            <div class="stat-value" id="room-period-display">—</div>
+            <div class="stat-sub muted" id="room-scenario-name">—</div>
+        </div>
+    </section>
+
+    <section class="card" style="margin-bottom: 1rem;">
+        <h2 class="card-title" style="margin-bottom: 0.45rem;">Прогресс комнаты</h2>
+        <p class="muted" id="room-progress-display">—</p>
+    </section>
+
+    <div class="stocks-grid room-stocks-grid" id="room-stocks-container" aria-live="polite"></div>
+
+    <section class="chart-panel chart-panel--wide" id="room-chart-panel" hidden>
+        <div class="chart-panel-head">
+            <div>
+                <h2 class="chart-panel-title" id="room-chart-title">График бумаги в период комнаты</h2>
+                <p class="chart-panel-subtitle" id="room-chart-subtitle">Исторический период, который задал учитель для этой комнаты.</p>
+            </div>
+        </div>
+        <div class="chart-meta" id="room-chart-meta"></div>
+        <div class="chart-layout chart-layout--stack">
+            <div class="chart-canvas-wrap">
+                <svg id="room-chart-svg" class="line-chart" viewBox="0 0 640 320" preserveAspectRatio="xMidYMid meet"></svg>
+            </div>
+            <div class="forecast-grid" id="room-chart-note-grid"></div>
+        </div>
+    </section>
+
+    <div class="table-card">
+        <div class="table-card-head">
+            <h2 class="table-card-title">Мой портфель в комнате</h2>
+        </div>
+        <div class="table-scroll">
+            <table class="data-table data-table--portfolio">
+                <thead>
+                    <tr>
+                        <th>Акция</th>
+                        <th>Количество, шт.</th>
+                        <th>Средняя цена покупки</th>
+                        <th>Текущая цена</th>
+                        <th>Стоимость позиции</th>
+                        <th>Изменение, %</th>
+                        <th>Прибыль / убыток, ₽</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="room-positions-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadRoomWorkspace(forceRefresh = false) {
+    const emptyState = document.getElementById('room-empty-state');
+    const workspace = document.getElementById('room-workspace');
+    const query = forceRefresh ? '?refresh=1' : '';
+    try {
+        const response = await fetch(`/api/room/current${query}`);
+        const data = await response.json();
+        if (!data.active) {
+            emptyState.hidden = false;
+            workspace.hidden = true;
+            return;
+        }
+
+        emptyState.hidden = true;
+        workspace.hidden = false;
+        document.getElementById('room-title').textContent = data.room.title;
+        document.getElementById('room-code').textContent = `Код: ${data.room.room_code}`;
+        document.getElementById('room-initial-balance-display').textContent = formatMoney(data.room.initial_balance);
+        document.getElementById('room-cash').textContent = formatMoney(data.portfolio.cash);
+        const roomSubtitle = document.getElementById('room-page-subtitle');
+        if (roomSubtitle) {
+            if (data.room.room_status === 'scheduled' && data.room.starts_at) {
+                roomSubtitle.textContent = `Вы уже вошли в комнату. Торги начнутся ${formatDateTime(data.room.starts_at)}, а пока можно посмотреть состав комнаты и исторический период.`;
+            } else {
+                roomSubtitle.textContent = 'Здесь ученик проходит задание учителя с отдельным капиталом и отдельными сделками.';
+            }
+        }
+        document.getElementById('room-period-display').textContent = data.room.scenario_start_date && data.room.scenario_end_date
+            ? `${formatFullDate(data.room.scenario_start_date)} — ${formatFullDate(data.room.scenario_end_date)}`
+            : 'Период не задан';
+        document.getElementById('room-scenario-name').textContent = data.room.scenario_name
+            ? `Сценарий: ${data.room.scenario_name}${data.virtual_date ? ` · текущий день комнаты: ${formatFullDate(data.virtual_date)}` : ''}`
+            : 'Учитель не назначил исторический сценарий';
+        const progressEl = document.getElementById('room-progress-display');
+        if (progressEl) {
+            if (data.room.room_status === 'scheduled' && data.room.starts_at) {
+                progressEl.textContent = `Комната уже закреплена за вами и откроется ${formatDateTime(data.room.starts_at)}.`;
+            } else if (data.room.starts_at && data.room.ends_at && data.virtual_date) {
+                const startAt = new Date(data.room.starts_at);
+                const endAt = new Date(data.room.ends_at);
+                const totalMinutes = Math.max(1, Math.round((endAt - startAt) / 60000));
+                const nowTs = Date.now();
+                const elapsedMinutes = Math.max(0, Math.min(totalMinutes, Math.floor((nowTs - startAt.getTime()) / 60000)));
+                progressEl.textContent = `Прошло ${elapsedMinutes} из ${totalMinutes} минут · сейчас ${formatFullDate(data.virtual_date)}`;
+            } else {
+                progressEl.textContent = 'Учитель не задал виртуальный период комнаты.';
+            }
+        }
+
+        const profitEl = document.getElementById('room-total-profit');
+        const profitPctEl = document.getElementById('room-total-profit-pct');
+        const profit = Number(data.portfolio.total_profit || 0);
+        const profitPct = Number(data.portfolio.total_profit_pct || 0);
+        const displayProfitPct = Math.abs(profitPct) < 0.01 && profit !== 0
+            ? (profit < 0 ? -0.01 : 0.01)
+            : profitPct;
+        profitEl.textContent = `${profit >= 0 ? '+' : ''}${formatMoney(profit)}`;
+        profitEl.classList.remove('positive', 'negative');
+        profitEl.classList.add(profit >= 0 ? 'positive' : 'negative');
+        profitPctEl.textContent = `${displayProfitPct >= 0 ? '+' : ''}${displayProfitPct.toFixed(2)}%`;
+        profitPctEl.classList.remove('positive', 'negative');
+        profitPctEl.classList.add(profit >= 0 ? 'positive' : 'negative');
+
+        const profitCard = document.getElementById('room-profit-card');
+        profitCard.classList.remove('summary-card--positive', 'summary-card--negative');
+        profitCard.classList.add(profit >= 0 ? 'summary-card--positive' : 'summary-card--negative');
+
+        const allowedSecids = data.room.allowed_secids || [];
+        document.getElementById('room-allowed-count').textContent = String(allowedSecids.length || data.securities.length);
+        document.getElementById('room-allowed-list').textContent = allowedSecids.length
+            ? allowedSecids.join(', ')
+            : 'Доступны все компании из общего списка';
+
+        const stocksContainer = document.getElementById('room-stocks-container');
+        const tradingDisabled = !data.room.trading_open;
+        stocksContainer.innerHTML = (data.securities || []).map((stock) => `
+            <article class="stock-card">
+                <div class="stock-header">
+                    <button type="button" class="ticker-button stock-ticker" data-room-analytics="${escapeHtml(stock.secid)}">${escapeHtml(stock.secid)}</button>
+                    <span class="stock-price ${stock.is_price_missing ? 'negative' : ''}">${escapeHtml(stock.price_label || formatMoney(stock.price))}</span>
+                </div>
+                <div class="stock-sector">${escapeHtml(stock.sector || '')}</div>
+                <div class="stock-name">${escapeHtml(stock.shortname || '')}</div>
+                <div class="stock-meta">Лот: <strong>${stock.lot_size}</strong> шт.</div>
+                <button type="button" class="btn btn-buy btn-block" data-room-buy="${escapeHtml(stock.secid)}" data-price="${stock.price}" data-lot="${stock.lot_size}" ${(tradingDisabled || stock.is_price_missing) ? 'disabled' : ''}>
+                    ${stock.is_price_missing ? 'Цена недоступна' : (tradingDisabled ? 'Торги ещё не начались' : 'Купить в комнате')}
+                </button>
+            </article>
+        `).join('') || '<p class="empty-hint">Для этой комнаты пока не назначены компании.</p>';
+
+        stocksContainer.querySelectorAll('[data-room-buy]').forEach((btn) => {
+            btn.addEventListener('click', () => roomBuyStock(btn.dataset.roomBuy, parseFloat(btn.dataset.price), parseInt(btn.dataset.lot, 10)));
+        });
+        stocksContainer.querySelectorAll('[data-room-analytics]').forEach((btn) => {
+            btn.addEventListener('click', () => loadRoomSecurityHistory(btn.dataset.roomAnalytics));
+        });
+
+        const positionsBody = document.getElementById('room-positions-body');
+        const positions = data.portfolio.positions || [];
+        positionsBody.innerHTML = positions.length ? positions.map((pos) => `
+            <tr>
+                <td><button type="button" class="ticker-button" data-room-position-analytics="${escapeHtml(pos.secid)}">${escapeHtml(pos.secid)}</button></td>
+                <td>${pos.quantity}</td>
+                <td><div>${Number(pos.avg_buy_price).toFixed(2)} ₽</div><div class="table-caption">Средняя цена покупки</div></td>
+                <td>${Number(pos.current_price).toFixed(2)} ₽</td>
+                <td>${formatMoney(pos.market_value)}</td>
+                <td class="${pos.profit_loss >= 0 ? 'positive' : 'negative'}">${pos.profit_loss_pct >= 0 ? '+' : ''}${Number(pos.profit_loss_pct).toFixed(2)}%</td>
+                <td class="${pos.profit_loss >= 0 ? 'positive' : 'negative'}">${pos.profit_loss >= 0 ? '+' : ''}${formatMoney(pos.profit_loss)}</td>
+                <td class="table-actions-cell">
+                    <button type="button" class="btn btn-sell btn-sm" data-room-sell="${escapeHtml(pos.secid)}" data-price="${pos.current_price}" data-qty="${pos.quantity}" data-lot="${pos.lot_size}" ${tradingDisabled ? 'disabled' : ''}>
+                        ${tradingDisabled ? 'Ожидание старта' : 'Продать'}
+                    </button>
+                </td>
+            </tr>
+        `).join('') : `<tr class="empty-row"><td colspan="8"><div class="table-empty">В моём портфеле комнаты пока нет позиций.</div></td></tr>`;
+
+        positionsBody.querySelectorAll('[data-room-sell]').forEach((btn) => {
+            btn.addEventListener('click', () => roomSellStock(btn.dataset.roomSell, parseFloat(btn.dataset.price), parseFloat(btn.dataset.qty), parseInt(btn.dataset.lot, 10)));
+        });
+        positionsBody.querySelectorAll('[data-room-position-analytics]').forEach((btn) => {
+            btn.addEventListener('click', () => loadRoomSecurityHistory(btn.dataset.roomPositionAnalytics));
+        });
+    } catch (error) {
+        showToast('Не удалось загрузить комнату', 'error');
+    }
+}
+
+async function loadRoomSecurityHistory(secid) {
+    const panel = document.getElementById('room-chart-panel');
+    const response = await fetch(`/api/room/${encodeURIComponent(secid)}/history`);
+    const data = await response.json();
+    if (!response.ok) {
+        showToast(data.error || 'Не удалось загрузить график комнаты', 'error');
+        return;
+    }
+    panel.hidden = false;
+    const title = document.getElementById('room-chart-title');
+    const subtitle = document.getElementById('room-chart-subtitle');
+    const metaId = 'room-chart-meta';
+    title.textContent = `${formatSecurityLabel(data.secid, data.shortname)}: график в период комнаты`;
+    subtitle.textContent = data.start_date && data.end_date
+        ? `${formatFullDate(data.start_date)} — ${formatFullDate(data.end_date)}. График строится по историческому периоду, заданному учителем.`
+        : 'Для этой комнаты период исторического теста не задан.';
+    const svg = document.getElementById('room-chart-svg');
+    if (data.chart_available) {
+        renderLineChart('room-chart-svg', data.history, {
+            candles: data.candles,
+            metaId,
+            secid: data.secid,
+            stroke: 'var(--accent)',
+            shockDate: data.shock_date,
+            shockLabel: 'Середина периода',
+            currentLabel: 'Финал периода',
+        });
+    } else if (svg) {
+        svg.innerHTML = `<foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" class="chart-empty">${escapeHtml(data.chart_message || 'График недоступен')}</div></foreignObject>`;
+        const meta = document.getElementById(metaId);
+        if (meta) {
+            meta.innerHTML = `<span class="negative">${escapeHtml(data.chart_message || 'График недоступен')}</span>`;
+        }
+    }
+    const grid = document.getElementById('room-chart-note-grid');
+    grid.innerHTML = `
+        <div class="forecast-card stress-note-card" style="grid-column: 1 / -1;">
+            <div class="forecast-card__label">Период комнаты</div>
+            <div class="forecast-card__sub">${escapeHtml(data.scenario_name || data.room_title || '')}</div>
+            ${data.chart_available ? '' : `<div class="forecast-card__sub negative" style="margin-top:0.6rem;">${escapeHtml(data.chart_message || '')}</div>`}
+        </div>
+    `;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function roomBuyStock(secid, price, lotSize) {
+    const result = await openModal({
+        title: `Покупка ${secid} в комнате`,
+        bodyHtml: `
+            <label class="field-label" for="buy-lots">Количество лотов (1 лот = ${lotSize} шт.)</label>
+            <input type="number" id="buy-lots" class="field-input" min="1" step="1" value="1" />
+        `,
+        confirmText: 'Купить',
+        cancelText: 'Отмена',
+    });
+    if (!result.ok || !result.lots || result.lots < 1) return;
+    const quantity = result.lots * lotSize;
+    const response = await fetch('/api/room/buy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secid, quantity }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+        showToast(data.error || 'Ошибка покупки в комнате', 'error');
+        return;
+    }
+    showToast(`Куплено ${secid} в комнате${data.virtual_date ? ` по цене дня ${formatFullDate(data.virtual_date)}` : ''}`, 'success');
+    loadRoomWorkspace(true);
+}
+
+async function roomSellStock(secid, price, maxQty, lotSize) {
+    const maxLots = Math.floor(Math.floor(Number(maxQty)) / lotSize);
+    const result = await openModal({
+        title: `Продажа ${secid} в комнате`,
+        bodyHtml: `
+            <label class="field-label" for="sell-qty">Количество лотов (макс. ${maxLots})</label>
+            <input type="number" id="sell-qty" class="field-input" min="1" max="${maxLots}" step="1" value="1" />
+        `,
+        confirmText: 'Продать',
+        cancelText: 'Отмена',
+    });
+    if (!result.ok || !result.qty || result.qty < 1) return;
+    const quantity = result.qty * lotSize;
+    const response = await fetch('/api/room/sell', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secid, quantity }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+        showToast(data.error || 'Ошибка продажи в комнате', 'error');
+        return;
+    }
+    showToast(`Продано ${secid} в комнате${data.virtual_date ? ` по цене дня ${formatFullDate(data.virtual_date)}` : ''}`, 'success');
+    loadRoomWorkspace(true);
+}
+
+document.getElementById('room-refresh-btn')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    if (button) {
+        button.classList.add('btn-loading');
+    }
+    try {
+        await loadRoomWorkspace(true);
+        const progressEl = document.getElementById('room-progress-display');
+        showToast(progressEl?.textContent || 'Данные комнаты обновлены', 'success');
+    } finally {
+        if (button) {
+            button.classList.remove('btn-loading');
+        }
+    }
+});
+loadRoomWorkspace();
+setInterval(() => loadRoomWorkspace(true), 300000);
+</script>
+{% endblock %}

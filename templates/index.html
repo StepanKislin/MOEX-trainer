@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+
+{% block title %}Акции — MOEX Trainer{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">Рынок</h1>
+        <p class="page-subtitle">Слева список бумаг, в центре детальная аналитика выбранной акции, справа лента новостей.</p>
+    </div>
+</div>
+
+<section class="hero-stats" aria-label="Краткая сводка">
+    <div class="stat-card stat-card--primary">
+        <div class="stat-label">Свободные средства</div>
+        <div class="stat-value" id="user-balance">—</div>
+        <div class="stat-sub muted" id="user-balance-sub"></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Глобальная прибыль по сделкам</div>
+        <div class="stat-value" id="global-trade-profit">—</div>
+        <div class="stat-sub muted" id="global-trade-meta">—</div>
+    </div>
+</section>
+
+<section class="market-layout" aria-label="Торговый терминал">
+    <aside class="market-column market-column--left">
+        <div class="card card--spaced">
+            <h2 class="card-title" style="margin-bottom: 0.65rem;">Доступные акции</h2>
+            <div class="toolbar toolbar--stack">
+                <label class="search-wrap" for="stock-search">
+                    <span class="search-icon" aria-hidden="true">⌕</span>
+                    <input type="search" id="stock-search" class="search-input" placeholder="Тикер, название или сектор…" autocomplete="off" />
+                </label>
+                <button type="button" id="refresh-quotes" class="btn btn-secondary btn-icon" title="Обновить котировки" aria-label="Обновить котировки">
+                    <span class="btn-icon-glyph" aria-hidden="true">↻</span>
+                    <span class="btn-icon-text">Обновить</span>
+                </button>
+            </div>
+            <div class="market-list" id="stocks-container" aria-live="polite"></div>
+        </div>
+    </aside>
+
+    <section class="market-column market-column--center">
+        <div class="card card--spaced">
+            <h2 class="card-title" id="selected-security-title">Выберите акцию слева</h2>
+            <p class="muted" id="selected-security-subtitle">Покажем цену, фундаментальные параметры, прогноз и связанные новости.</p>
+            <div class="market-factors" id="forecast-factors-grid">
+                <div class="forecast-card"><div class="forecast-card__label">Факторы</div><div class="forecast-card__sub">После выбора бумаги появятся расчетные факторы прогноза.</div></div>
+            </div>
+        </div>
+
+        <section class="chart-panel chart-panel--wide" id="market-chart-panel" hidden>
+            <div class="chart-panel-head">
+                <div>
+                    <h2 class="chart-panel-title" id="market-chart-title">История цены</h2>
+                    <p class="chart-panel-subtitle" id="market-chart-subtitle">История цены и прогноз по выбранной бумаге.</p>
+                </div>
+            </div>
+            <div class="chart-meta" id="market-chart-meta"></div>
+            <div class="chart-layout chart-layout--stack">
+                <div class="chart-canvas-wrap">
+                    <svg id="market-chart-svg" class="line-chart" viewBox="0 0 640 320" preserveAspectRatio="xMidYMid meet"></svg>
+                </div>
+                <div class="forecast-grid" id="market-forecast-grid"></div>
+            </div>
+        </section>
+
+        <div class="card" id="selected-security-analysis-card" hidden>
+            <h3 class="card-title" style="margin-bottom:0.65rem;">Почему бумага растёт или падает</h3>
+            <p class="muted" id="selected-security-analysis-summary">—</p>
+            <ul class="analysis-list" id="selected-security-analysis-drivers"></ul>
+        </div>
+
+        <div class="card">
+            <h3 class="card-title" style="margin-bottom:0.75rem;">Недавние новости по выбранной акции</h3>
+            <p class="muted" id="selected-news-query" style="margin-bottom:0.65rem;">Источник: новости по выбранной акции и её тикеру.</p>
+            <div class="news-feed" id="selected-news-list">
+                <p class="empty-hint">Выберите бумагу, чтобы увидеть тематические новости.</p>
+            </div>
+        </div>
+    </section>
+
+    <aside class="market-column market-column--right">
+        <div class="card">
+            <h2 class="card-title" style="margin-bottom: 0.65rem;">Новости рынка</h2>
+            <p class="muted" id="market-news-query" style="margin-bottom: 0.65rem;">Запрос: stock market OR MOEX OR inflation OR rates</p>
+            <div class="news-feed" id="market-news-list">
+                <p class="empty-hint">Загружаем новости…</p>
+            </div>
+        </div>
+    </aside>
+</section>
+{% endblock %}

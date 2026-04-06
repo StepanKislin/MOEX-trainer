@@ -1,0 +1,622 @@
+{% extends 'base.html' %}
+
+{% block title %}Кабинет — MOEX Trainer{% endblock %}
+
+{% block content %}
+<!-- Серверные переменные для безопасного доступа из JS -->
+<div id="dashboard-server-data"
+     data-initial-room-id="{{ (selected_room_leaderboard_id or none)|tojson }}"
+     data-is-teacher="{{ (is_teacher or false)|tojson }}"
+     data-is-admin="{{ (session.get('is_admin') or false)|tojson }}"
+     data-username="{{ (session.username or '')|tojson }}"
+     hidden></div>
+
+<section class="page-head page-head--row">
+    <div>
+        <h1 class="page-title">
+            {% if session.get('is_admin') %}Кабинет администратора
+            {% elif is_teacher %}Кабинет учителя
+            {% else %}Личный кабинет{% endif %}
+        </h1>
+        <p class="page-subtitle">
+            {% if session.get('is_admin') %}Управляйте кодами школ и общим списком компаний через админку.
+            {% elif is_teacher %}Создавайте комнаты, назначайте стресс-сценарии и смотрите рейтинг учеников.
+            {% else %}Вступайте в комнаты по коду, следите за местом в рейтинге и играйте в свободном режиме.{% endif %}
+        </p>
+    </div>
+    {% if not session.get('is_admin') %}
+    <a href="{{ url_for('portfolio') }}" class="btn btn-secondary">Открыть портфель</a>
+    {% endif %}
+</section>
+
+<div class="dashboard-grid">
+    <section class="card">
+        <h2 class="card-title">Мой статус</h2>
+        <div class="stats-grid">
+            <div class="stat-item"><span class="stat-label">Пользователь</span><span class="stat-value">{{ session.username }}</span></div>
+            <div class="stat-item"><span class="stat-label">Роль</span><span class="stat-value">{% if session.get('is_admin') %}Админ{% elif is_teacher %}Учитель{% else %}Ученик{% endif %}</span></div>
+            {% if not session.get('is_admin') %}
+            <div class="stat-item"><span class="stat-label">Начальный капитал</span><span class="stat-value">1 000 000 ₽</span></div>
+            <div class="stat-item"><span class="stat-label">Режим</span><span class="stat-value">Личный портфель + комнаты</span></div>
+            {% else %}
+            <div class="stat-item"><span class="stat-label">Доступ</span><span class="stat-value">Школы, компании и глобальные сценарии</span></div>
+            {% endif %}
+        </div>
+    </section>
+
+    {% if session.get('is_admin') %}
+    <section class="card">
+        <h2 class="card-title">Действия администратора</h2>
+        <p class="muted">Используйте раздел «Админка», чтобы выдавать школьные коды и управлять компаниями.</p>
+    </section>
+
+    {% elif is_teacher %}
+    <section class="card">
+        <h2 class="card-title">Создать комнату</h2>
+        <form id="room-create-form" class="form-stack" method="POST" action="{{ url_for('dashboard') }}" autocomplete="off">
+            <input type="hidden" name="action" value="create_room">
+            <div class="form-group">
+                <label class="form-label" for="room-title">Название комнаты</label>
+                <input id="room-title" name="title" class="form-input" placeholder="Например, Пандемия 2020 — 11А" required>
+                <small class="form-error" data-room-error-for="title" hidden></small>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="room-description">Описание</label>
+                <textarea id="room-description" name="description" class="form-input" rows="3" placeholder="Что должны сделать ученики"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="room-scenario">Стресс-сценарий</label>
+                <select id="room-scenario" name="scenario_slug" class="form-input">
+                    <option value="">Свободная практика без сценария</option>
+                    {% for scenario in scenarios %}<option value="{{ scenario.slug }}">{{ scenario.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="grid-two">
+                <div class="form-group">
+                    <label class="form-label" for="room-duration">Длительность, минут</label>
+                    <input id="room-duration" name="duration_minutes" type="number" min="5" value="60" class="form-input" required>
+                    <small class="form-error" data-room-error-for="duration_minutes" hidden></small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="room-starts-at">Старт</label>
+                    <input id="room-starts-at" name="starts_at" type="datetime-local" class="form-input" required>
+                    <small class="form-error" data-room-error-for="starts_at" hidden></small>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="room-initial-balance">Начальный капитал комнаты, ₽</label>
+                <input id="room-initial-balance" name="initial_balance" type="number" min="1000" step="1000" value="1000000" class="form-input" required>
+                <small class="form-hint">Не затрагивает личный режим учеников.</small>
+                <small class="form-error" data-room-error-for="initial_balance" hidden></small>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Компании для комнаты</label>
+                <div class="checkbox-grid">
+                    {% for security in securities %}
+                    <label class="checkbox-chip"><input type="checkbox" name="allowed_secids" value="{{ security.secid }}"><span>{{ security.secid }}</span></label>
+                    {% endfor %}
+                </div>
+                <small class="form-hint">Пусто = все компании. Если выбираете, минимум 3.</small>
+                <small class="form-error" data-room-error-for="allowed_secids" hidden></small>
+            </div>
+            <button type="submit" class="btn btn-primary">Создать комнату</button>
+        </form>
+        <p id="room-create-message" class="form-status{% if dashboard_form == 'room' and dashboard_success %} positive{% elif dashboard_form == 'room' and dashboard_error %} negative{% endif %}" role="alert" aria-live="assertive" {% if not (dashboard_form == 'room' and (dashboard_success or dashboard_error)) %}hidden{% endif %}>{{ dashboard_success if dashboard_form == 'room' and dashboard_success else (dashboard_error if dashboard_form == 'room' else '') }}</p>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Создать стресс-ситуацию</h2>
+        <form id="scenario-create-form" class="form-stack" method="POST" action="{{ url_for('dashboard') }}" autocomplete="off">
+            <input type="hidden" name="action" value="create_scenario">
+            <div class="form-group">
+                <label class="form-label" for="scenario-title">Название сценария</label>
+                <input id="scenario-title" name="name" class="form-input" placeholder="Например, Обвал осени 2008" required>
+                <small class="form-error" data-scenario-error-for="name" hidden></small>
+            </div>
+            <div class="grid-two">
+                <div class="form-group">
+                    <label class="form-label" for="scenario-start-date">Начало периода</label>
+                    <input id="scenario-start-date" name="start_date" type="date" min="2013-01-01" class="form-input" required>
+                    <small class="form-error" data-scenario-error-for="start_date" hidden></small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="scenario-end-date">Конец периода</label>
+                    <input id="scenario-end-date" name="end_date" type="date" min="2013-01-01" class="form-input" required>
+                    <small class="form-error" data-scenario-error-for="end_date" hidden></small>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="scenario-description">Пояснение</label>
+                <textarea id="scenario-description" name="description" class="form-input" rows="3" placeholder="Контекст сценария"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Создать сценарий</button>
+        </form>
+        <p id="scenario-create-message" class="form-status{% if dashboard_form == 'scenario' and dashboard_success %} positive{% elif dashboard_form == 'scenario' and dashboard_error %} negative{% endif %}" role="alert" aria-live="assertive" {% if not (dashboard_form == 'scenario' and (dashboard_success or dashboard_error)) %}hidden{% endif %}>{{ dashboard_success if dashboard_form == 'scenario' and dashboard_success else (dashboard_error if dashboard_form == 'scenario' else '') }}</p>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Мои комнаты</h2>
+        <div id="teacher-rooms-list" class="dashboard-list">
+            {% if teacher_rooms %}
+                {% for room in teacher_rooms %}
+                <article class="list-item room-status-card {{ 'room-status-card--active' if room.room_status == 'active' else 'room-status-card--ended' }}">
+                    <div>
+                        <div class="room-status-head"><strong>{{ room.title }}</strong><span class="room-status-badge {{ 'room-status-badge--active' if room.room_status == 'active' else 'room-status-badge--ended' }}">{{ 'Идёт' if room.room_status == 'active' else ('Запланирована' if room.room_status == 'scheduled' else 'Завершена') }}</span></div>
+                        <p class="muted">Код: <code>{{ room.room_code }}</code>{% if room.scenario_name %} · Сценарий: {{ room.scenario_name }}{% endif %}</p>
+                        <p class="muted">Участников: {{ room.participants_count }}{% if room.starts_at %} · Старт: {{ room.starts_at.strftime('%d.%m.%Y %H:%M') }}{% endif %}{% if room.ends_at %} · До {{ room.ends_at.strftime('%d.%m.%Y %H:%M') }}{% endif %}</p>
+                        <p class="muted">Стартовый капитал: {{ '%.0f'|format(room.initial_balance or 0) }} ₽</p>
+                        {% if room.allowed_secids %}<p class="muted">Компании: {{ room.allowed_secids }}</p>{% endif %}
+                    </div>
+                    <div class="list-actions">
+                        <a href="{{ url_for('dashboard', room_leaderboard=room.id) }}#room-leaderboard-panel" class="btn btn-sm btn-outline teacher-room-leaderboard-link" data-room-id="{{ room.id }}">Рейтинг</a>
+                        {% if room.room_status != 'ended' %}
+                        <form method="POST" action="{{ url_for('dashboard_close_room', room_id=room.id) }}" class="inline-form room-close-form">
+                            <button type="submit" class="btn btn-sm btn-secondary room-close-btn" data-room-id="{{ room.id }}">Завершить</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </article>
+                {% endfor %}
+            {% else %}<p class="muted">Пока нет созданных комнат.</p>{% endif %}
+        </div>
+    </section>
+
+    {% else %}
+    <section class="card">
+        <h2 class="card-title">Вступить в комнату</h2>
+        <form id="room-join-form" class="form-inline" method="POST" action="{{ url_for('dashboard') }}" autocomplete="off">
+            <input type="hidden" name="action" value="join_room">
+            <input id="room-code" name="room_code" class="form-input" placeholder="Введите код комнаты" maxlength="8" required>
+            <button type="submit" class="btn btn-primary">Войти</button>
+        </form>
+        <small class="form-error" data-room-error-for="room_code" hidden></small>
+        <p id="room-join-message" class="form-status{% if dashboard_form == 'join_room' and dashboard_success %} positive{% elif dashboard_form == 'join_room' and dashboard_error %} negative{% endif %}" role="alert" aria-live="assertive" {% if not (dashboard_form == 'join_room' and (dashboard_success or dashboard_error)) %}hidden{% endif %}>{{ dashboard_success if dashboard_form == 'join_room' and dashboard_success else (dashboard_error if dashboard_form == 'join_room' else '') }}</p>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Мои комнаты и результаты</h2>
+        <div id="student-rooms-list" class="dashboard-list">
+            {% if student_rooms %}
+                {% for room in student_rooms %}
+                <article class="list-item room-status-card {{ 'room-status-card--active' if room.room_status == 'active' else 'room-status-card--ended' }}">
+                    <div>
+                        <div class="room-status-head"><strong>{{ room.title }}</strong><span class="room-status-badge {{ 'room-status-badge--active' if room.room_status == 'active' else 'room-status-badge--ended' }}">{{ 'Идёт' if room.room_status == 'active' else ('Запланирована' if room.room_status == 'scheduled' else 'Завершена') }}</span></div>
+                        <p class="muted">Код: <code>{{ room.room_code }}</code>{% if room.scenario_name %} · Сценарий: {{ room.scenario_name }}{% endif %}</p>
+                        <p class="muted">Место: {{ room.rank_position or '—' }} · Доходность: {{ '%.2f'|format(room.total_return_pct or 0) }}%</p>
+                        <p class="muted">Стартовый капитал: {{ '%.0f'|format(room.initial_balance or 0) }} ₽</p>
+                        {% if room.allowed_secids %}<p class="muted">Компании: {{ room.allowed_secids }}</p>{% endif %}
+                    </div>
+                    <div class="list-actions">
+                        {% if room.room_status == 'ended' %}<a href="{{ url_for('dashboard', room_leaderboard=room.id) }}#room-leaderboard-panel" class="btn btn-sm btn-outline student-room-leaderboard-link" data-room-id="{{ room.id }}">Посмотреть рейтинг</a>
+                        {% else %}<span class="muted">Рейтинг откроется после завершения</span>{% endif %}
+                        {% if room.trading_open %}<a href="{{ url_for('room_workspace') }}" class="btn btn-sm btn-secondary">Перейти в комнату</a>{% endif %}
+                    </div>
+                </article>
+                {% endfor %}
+            {% else %}<p class="muted">Вы ещё не вступили ни в одну комнату.</p>{% endif %}
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="card">
+        <h2 class="card-title">Рейтинг комнаты</h2>
+        <div id="room-leaderboard-panel" data-initialized="false">
+            {% if selected_room_leaderboard %}
+                {% set selected_room = selected_room_leaderboard.room %}
+                {% set selected_rows = selected_room_leaderboard.leaderboard %}
+                {% if selected_room.room_status == 'active' %}{% set selected_status_text = 'Промежуточный рейтинг обновляется автоматически.' %}
+                {% elif selected_room.room_status == 'scheduled' %}{% set selected_status_text = 'Комната запланирована. Рейтинг откроется после старта.' %}
+                {% else %}{% set selected_status_text = 'Итоговый рейтинг комнаты.' %}{% endif %}
+                <div class="page-head" style="margin-bottom: 1rem;">
+                    <h3 class="card-title" style="margin-bottom: 0.35rem;">{{ selected_room.title }}</h3>
+                    <p class="muted">Код: <code>{{ selected_room.room_code }}</code>{% if selected_room.scenario_name %} · Сценарий: {{ selected_room.scenario_name }}{% endif %}</p>
+                    <p class="muted">{{ selected_status_text }}</p>
+                </div>
+                {% if selected_rows %}
+                <div class="table-wrap">
+                    <table class="positions-table positions-table--leaderboard" data-ssr="true">
+                        <thead><tr><th>Место</th><th>Участник</th><th>Портфель</th><th>После сценария</th><th>Доходность</th><th>Sharpe</th><th>Балл</th></tr></thead>
+                        <tbody>{% for row in selected_rows %}<tr><td>{{ row.rank_position or '—' }}</td><td>{{ row.username }}</td><td>{{ '%.2f'|format(row.portfolio_value or 0) }} ₽</td><td>{{ '%.2f'|format(row.stress_value or 0) }} ₽</td><td>{{ '%.2f'|format(row.total_return_pct or 0) }}%</td><td>{{ '%.2f'|format(row.sharpe_ratio or 0) }}</td><td>{{ '%.2f'|format(row.score or 0) }}</td></tr>{% endfor %}</tbody>
+                    </table>
+                </div>
+                {% else %}<p class="muted">Нет участников или результатов.</p>{% endif %}
+            {% else %}<p class="muted">Выберите комнату для просмотра рейтинга.</p>{% endif %}
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Личная статистика</h2>
+        <div class="stats-grid stats-grid--rich" id="personal-stats-grid">
+            <div class="stat-item"><span class="stat-label">Сделки</span><span class="stat-value" id="stat-trades">{{ personal_stats.transactions_count if personal_stats else '—' }}</span></div>
+            <div class="stat-item"><span class="stat-label">Портфель</span><span class="stat-value" id="stat-value">{{ ('%.2f'|format(personal_stats.total_value) ~ ' ₽') if personal_stats else '—' }}</span></div>
+            <div class="stat-item"><span class="stat-label">Доходность</span><span class="stat-value {% if personal_stats %}{{ 'stat-value--positive' if personal_stats.total_profit_pct >= 0 else 'stat-value--negative' }}{% endif %}" id="stat-roi">{{ ('%.2f'|format(personal_stats.total_profit_pct) ~ '%') if personal_stats else '—' }}</span></div>
+            <div class="stat-item"><span class="stat-label">Sharpe</span><span class="stat-value {% if personal_stats %}{{ 'stat-value--positive' if personal_stats.sharpe_ratio >= 0 else 'stat-value--negative' }}{% endif %}" id="stat-sharpe">{{ ('%.2f'|format(personal_stats.sharpe_ratio)) if personal_stats else '—' }}</span></div>
+            <div class="stat-item"><span class="stat-label">Доход счёта, %</span><span class="stat-value" id="stat-account-profit-pct">—</span></div>
+            <div class="stat-item"><span class="stat-label">Средний результат сделки</span><span class="stat-value" id="stat-avg-trade">—</span></div>
+            <div class="stat-item"><span class="stat-label">Реализованный PnL</span><span class="stat-value" id="stat-realized">—</span></div>
+            <div class="stat-item"><span class="stat-label">Нереализованный PnL</span><span class="stat-value" id="stat-unrealized">—</span></div>
+            <div class="stat-item"><span class="stat-label">Win-rate продаж</span><span class="stat-value" id="stat-winrate">—</span></div>
+            <div class="stat-item"><span class="stat-label">Покупок / продаж</span><span class="stat-value" id="stat-turnover">—</span></div>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2 class="card-title">Портфельная аналитика</h2>
+        <div class="stats-grid" id="portfolio-analytics-grid">
+            <div class="stat-item"><span class="stat-label">Свободные средства</span><span class="stat-value" id="stat-cash">—</span></div>
+            <div class="stat-item"><span class="stat-label">Стоимость позиций</span><span class="stat-value" id="stat-positions-value">—</span></div>
+            <div class="stat-item"><span class="stat-label">Доход с начала на счёте</span><span class="stat-value" id="stat-account-profit">—</span></div>
+            <div class="stat-item"><span class="stat-label">Оборот покупок</span><span class="stat-value" id="stat-buy-volume">—</span></div>
+            <div class="stat-item"><span class="stat-label">Оборот продаж</span><span class="stat-value" id="stat-sell-volume">—</span></div>
+            <div class="stat-item"><span class="stat-label">Диверсификация</span><span class="stat-value" id="stat-diversification">—</span></div>
+            <div class="stat-item"><span class="stat-label">Компаний в портфеле</span><span class="stat-value" id="stat-assets-count">—</span></div>
+            <div class="stat-item"><span class="stat-label">Прогноз на 1 месяц</span><span class="stat-value" id="stat-forecast-month">—</span></div>
+            <div class="stat-item"><span class="stat-label">Прогноз на 1 год</span><span class="stat-value" id="stat-forecast-year">—</span></div>
+            <div class="stat-item"><span class="stat-label">Прогноз на 10 лет</span><span class="stat-value" id="stat-forecast-ten-years">—</span></div>
+        </div>
+    </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// --- Утилиты ---
+function getDashboardVar(name, fallback = null) {
+    const el = document.getElementById('dashboard-server-data');
+    if (!el) return fallback;
+    const val = el.dataset[name];
+    if (val === undefined || val === 'null') return fallback;
+    try { return JSON.parse(val); } catch { return fallback; }
+}
+
+async function fetchJson(url, options = {}) {
+    const response = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        ...options,
+    });
+    const isJson = response.headers.get('content-type')?.includes('application/json');
+    const data = isJson ? await response.json() : null;
+    if (!response.ok) {
+        let raw = !isJson ? await response.text() : (data?.error || '');
+        const clean = String(raw).replace(/<[^>]*>/g, '').trim().slice(0, 150);
+        throw new Error(clean || `Ошибка ${response.status}`);
+    }
+    return data;
+}
+
+function formatMoney(v) { return Number(v||0).toLocaleString('ru-RU', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ₽'; }
+
+// --- Сценарии ---
+async function refreshScenarios(selected = '') {
+    const el = document.getElementById('room-scenario');
+    if (!el) return;
+    try {
+        const { scenarios = [] } = await fetchJson('/api/scenarios');
+        el.innerHTML = '<option value="">Свободная практика без сценария</option>' +
+            scenarios.map(s => `<option value="${s.slug}" ${s.slug===selected?'selected':''}>${s.name}</option>`).join('');
+    } catch(e) { console.warn('Scenarios fetch failed', e); }
+}
+
+// --- Личная статистика ---
+async function loadStats() {
+    const applyStatsPayload = (p) => {
+        try {
+            const tradesEl = document.getElementById('stat-trades');
+            const valueEl = document.getElementById('stat-value');
+            const roi = document.getElementById('stat-roi');
+            const sharpe = document.getElementById('stat-sharpe');
+            if (tradesEl) tradesEl.textContent = Number(p.transactions_count || 0);
+            if (valueEl) valueEl.textContent = formatMoney(p.total_value);
+            if (roi) {
+                roi.textContent = `${Number(p.total_profit_pct).toFixed(2)}%`;
+                roi.className = `stat-value ${Number(p.total_profit_pct || 0) >= 0 ? 'stat-value--positive' : 'stat-value--negative'}`;
+            }
+            if (sharpe) {
+                const sh = Number(p.sharpe_ratio || 0);
+                sharpe.textContent = sh.toFixed(2);
+                sharpe.className = `stat-value ${sh >= 0 ? 'stat-value--positive' : 'stat-value--negative'}`;
+            }
+
+            const trade = p.trade_stats || {};
+            const realized = Number(trade.realized_profit || 0);
+            const unrealized = Number(trade.unrealized_profit || 0);
+            const winRate = Number(trade.sell_win_rate_pct || 0);
+            const realizedEl = document.getElementById('stat-realized');
+            const unrealizedEl = document.getElementById('stat-unrealized');
+            const winRateEl = document.getElementById('stat-winrate');
+            const turnoverEl = document.getElementById('stat-turnover');
+            const accountProfitPctEl = document.getElementById('stat-account-profit-pct');
+            const avgTradeEl = document.getElementById('stat-avg-trade');
+            if (realizedEl) {
+                realizedEl.textContent = `${realized >= 0 ? '+' : ''}${formatMoney(realized)}`;
+                realizedEl.className = `stat-value ${realized >= 0 ? 'stat-value--positive' : 'stat-value--negative'}`;
+            }
+            if (unrealizedEl) {
+                unrealizedEl.textContent = `${unrealized >= 0 ? '+' : ''}${formatMoney(unrealized)}`;
+                unrealizedEl.className = `stat-value ${unrealized >= 0 ? 'stat-value--positive' : 'stat-value--negative'}`;
+            }
+            if (winRateEl) {
+                winRateEl.textContent = `${winRate.toFixed(1)}%`;
+                winRateEl.className = `stat-value ${winRate >= 50 ? 'stat-value--positive' : 'stat-value--negative'}`;
+            }
+            if (turnoverEl) {
+                turnoverEl.textContent = `${Number(trade.buy_count || 0)} / ${Number(trade.sell_count || 0)}`;
+                turnoverEl.className = 'stat-value';
+            }
+            if (accountProfitPctEl) {
+                const accountProfitPct = Number(p.account_total_profit_pct || 0);
+                accountProfitPctEl.textContent = `${accountProfitPct >= 0 ? '+' : ''}${accountProfitPct.toFixed(2)}%`;
+                accountProfitPctEl.className = `stat-value ${accountProfitPct >= 0 ? 'stat-value--positive' : 'stat-value--negative'}`;
+            }
+            if (avgTradeEl) {
+                const totalTrades = Number(trade.buy_count || 0) + Number(trade.sell_count || 0);
+                const avgTradePnl = totalTrades > 0 ? Number(trade.total_profit || 0) / totalTrades : 0;
+                avgTradeEl.textContent = `${avgTradePnl >= 0 ? '+' : ''}${formatMoney(avgTradePnl)}`;
+                avgTradeEl.className = `stat-value ${avgTradePnl >= 0 ? 'stat-value--positive' : 'stat-value--negative'}`;
+            }
+
+            const cashEl = document.getElementById('stat-cash');
+            const positionsValueEl = document.getElementById('stat-positions-value');
+            const accountProfitEl = document.getElementById('stat-account-profit');
+            const diversificationEl = document.getElementById('stat-diversification');
+            const assetsCountEl = document.getElementById('stat-assets-count');
+            const monthEl = document.getElementById('stat-forecast-month');
+            const yearEl = document.getElementById('stat-forecast-year');
+            const tenYearsEl = document.getElementById('stat-forecast-ten-years');
+            const buyVolumeEl = document.getElementById('stat-buy-volume');
+            const sellVolumeEl = document.getElementById('stat-sell-volume');
+            if (cashEl) cashEl.textContent = formatMoney(p.cash || 0);
+            if (positionsValueEl) positionsValueEl.textContent = formatMoney(p.positions_value || 0);
+            if (accountProfitEl) {
+                const accountProfit = Number(p.account_total_profit || 0);
+                accountProfitEl.textContent = `${accountProfit >= 0 ? '+' : ''}${formatMoney(accountProfit)}`;
+                accountProfitEl.className = `stat-value ${accountProfit >= 0 ? 'stat-value--positive' : 'stat-value--negative'}`;
+            }
+            if (diversificationEl) {
+                diversificationEl.textContent = p.assets_rule_ok ? 'Соответствует' : 'Требует улучшения';
+                diversificationEl.className = `stat-value ${p.assets_rule_ok ? 'stat-value--positive' : 'stat-value--negative'}`;
+            }
+            if (assetsCountEl) assetsCountEl.textContent = String(Number(p.assets_count || 0));
+            if (monthEl) monthEl.textContent = formatMoney(p.forecast?.month || 0);
+            if (yearEl) yearEl.textContent = formatMoney(p.forecast?.year || 0);
+            if (tenYearsEl) tenYearsEl.textContent = formatMoney(p.forecast?.ten_years || 0);
+            if (buyVolumeEl) buyVolumeEl.textContent = formatMoney(trade.buy_volume || 0);
+            if (sellVolumeEl) sellVolumeEl.textContent = formatMoney(trade.sell_volume || 0);
+        } catch(e) {
+            console.warn('Stats render failed', e);
+        }
+    };
+
+    try {
+        const p = await fetchJson('/api/stats');
+        applyStatsPayload(p);
+    } catch(e) {
+        console.warn('Stats fetch failed, fallback to /api/portfolio', e);
+        try {
+            const p = await fetchJson('/api/portfolio');
+            applyStatsPayload({
+                ...p,
+                avg_return: Number(p.avg_return || 0),
+                volatility: Number(p.volatility || 0),
+                sharpe_ratio: Number(p.sharpe_ratio || 0),
+                trade_stats: p.trade_stats || {},
+            });
+        } catch (fallbackErr) {
+            console.warn('Portfolio fallback failed', fallbackErr);
+            const fallbackIds = [
+                'stat-trades', 'stat-value', 'stat-roi', 'stat-sharpe', 'stat-account-profit-pct', 'stat-avg-trade',
+                'stat-realized', 'stat-unrealized', 'stat-winrate', 'stat-turnover', 'stat-cash',
+                'stat-positions-value', 'stat-account-profit', 'stat-buy-volume', 'stat-sell-volume',
+                'stat-diversification', 'stat-assets-count', 'stat-forecast-month', 'stat-forecast-year', 'stat-forecast-ten-years',
+            ];
+            fallbackIds.forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.textContent = '—';
+                    el.className = 'stat-value muted';
+                }
+            });
+        }
+    }
+}
+
+// --- Рейтинг ---
+let lbTimer = null;
+let activeLbId = null;
+
+function clearLbTimer() { if (lbTimer) { clearInterval(lbTimer); lbTimer = null; } }
+window.addEventListener('beforeunload', clearLbTimer);
+
+async function loadLeaderboard(roomId) {
+    clearLbTimer();
+    activeLbId = roomId;
+    const panel = document.getElementById('room-leaderboard-panel');
+    
+    // FIX SSR: не трогать отрендеренную таблицу, если она уже есть
+    if (panel.dataset.initialized === 'true' && panel.querySelector('.positions-table')) {
+        return; 
+    }
+    panel.innerHTML = '<p class="muted">Загрузка...</p>';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    try {
+        const { room, leaderboard = [] } = await fetchJson(`/api/rooms/${roomId}/leaderboard`);
+        const status = room?.room_status || 'inactive';
+        const statusTxt = status === 'active' ? 'Промежуточный рейтинг обновляется автоматически.' :
+                          status === 'scheduled' ? 'Комната запланирована. Рейтинг откроется после старта.' : 'Итоговый рейтинг комнаты.';
+
+        if (!leaderboard.length) {
+            panel.innerHTML = `<div class="page-head" style="margin-bottom:1rem"><h3 class="card-title" style="margin-bottom:0.35rem">${room.title}</h3><p class="muted">Код: <code>${room.room_code}</code></p><p class="muted">${statusTxt}</p></div><p class="muted">Нет участников или результатов.</p>`;
+            return;
+        }
+
+        panel.innerHTML = `
+            <div class="page-head" style="margin-bottom:1rem"><h3 class="card-title" style="margin-bottom:0.35rem">${room.title}</h3><p class="muted">Код: <code>${room.room_code}</code>${room.scenario_name?` · Сценарий: ${room.scenario_name}`:''}</p><p class="muted">${statusTxt}</p></div>
+            <div class="table-wrap"><table class="positions-table positions-table--leaderboard"><thead><tr><th>Место</th><th>Участник</th><th>Портфель</th><th>После сценария</th><th>Доходность</th><th>Sharpe</th><th>Балл</th></tr></thead><tbody>${leaderboard.map(r=>`<tr><td>${r.rank_position||'—'}</td><td>${r.username}</td><td>${formatMoney(r.portfolio_value)}</td><td>${formatMoney(r.stress_value)}</td><td>${Number(r.total_return_pct).toFixed(2)}%</td><td>${Number(r.sharpe_ratio).toFixed(2)}</td><td>${Number(r.score).toFixed(2)}</td></tr>`).join('')}</tbody></table></div>`;
+        
+        panel.dataset.initialized = 'true';
+        if (status === 'active') lbTimer = setInterval(() => loadLeaderboard(roomId), 15000);
+    } catch(e) {
+        panel.innerHTML = `<p class="negative">${e.message || 'Не удалось загрузить рейтинг.'}</p>`;
+    }
+}
+
+// --- Закрытие комнаты ---
+async function closeRoom(roomId) {
+    const btn = document.querySelector(`[data-room-id="${roomId}"].room-close-btn`);
+    if (btn) { btn.disabled = true; btn.textContent = 'Завершение...'; }
+    try {
+        await fetchJson(`/api/rooms/${roomId}/close`, { method: 'POST' });
+        const card = document.querySelector(`[data-room-id="${roomId}"]`)?.closest('.room-status-card');
+        if (card) {
+            const badge = card.querySelector('.room-status-badge');
+            if (badge) { badge.textContent = 'Завершена'; badge.className = 'room-status-badge room-status-badge--ended'; }
+            card.classList.remove('room-status-card--active');
+            card.classList.add('room-status-card--ended');
+            btn?.remove();
+        }
+        if (roomId === activeLbId) loadLeaderboard(roomId);
+    } catch(e) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Завершить'; }
+        alert(e.message || 'Ошибка завершения');
+    }
+}
+
+// --- Ошибки форм ---
+function resetErr(formId, msgId) {
+    document.querySelectorAll(`#${formId} [class*="error"]`).forEach(e => { e.textContent = ''; e.hidden = true; e.classList.remove('form-input--error'); });
+    const m = document.getElementById(msgId); if (m) { m.textContent = ''; m.className = 'form-status'; m.hidden = true; }
+}
+
+function showErr(formId, msgId, text, field) {
+    const m = document.getElementById(msgId);
+    if (m) { m.textContent = text; m.className = 'form-status negative'; m.hidden = false; }
+    if (field) {
+        const f = document.querySelector(`#${formId} [name="${field}"]`);
+        if (f) { f.classList.add('form-input--error'); f.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+        const i = document.querySelector(`#${formId} [data-room-error-for="${field}"], #${formId} [data-scenario-error-for="${field}"]`);
+        if (i) { i.textContent = text; i.hidden = false; }
+    }
+}
+
+// --- Хендлеры форм ---
+window.__dashboardRoomSubmit = async function(e) {
+    e.preventDefault();
+    resetErr('room-create-form', 'room-create-message');
+    const form = document.getElementById('room-create-form');
+    const fd = new FormData(form);
+    const d = Object.fromEntries(fd.entries());
+    d.allowed_secids = fd.getAll('allowed_secids');
+    d.duration_minutes = Number(d.duration_minutes);
+    d.initial_balance = Number(d.initial_balance);
+
+    if (!d.title?.trim()) return showErr('room-create-form','room-create-message','Введите название.','title');
+    if (d.duration_minutes < 5) return showErr('room-create-form','room-create-message','Минимум 5 минут.','duration_minutes');
+    if (d.initial_balance <= 0) return showErr('room-create-form','room-create-message','Укажите капитал.','initial_balance');
+    if (d.allowed_secids.length > 0 && d.allowed_secids.length < 3) return showErr('room-create-form','room-create-message','≥3 компании или пусто.','allowed_secids');
+    
+    const start = new Date(d.starts_at);
+    if (isNaN(start) || start.getTime() <= Date.now()) return showErr('room-create-form','room-create-message','Укажите будущее время.','starts_at');
+
+    try {
+        const res = await fetchJson('/api/rooms', { method:'POST', body:JSON.stringify(d) });
+        showErr('room-create-form','room-create-message',`Комната создана. Код: ${res.room.room_code}`, null);
+        document.getElementById('room-create-message').className = 'form-status positive';
+        form.reset(); setTimeout(() => window.location.reload(), 800);
+    } catch(err) {
+        const t = String(err.message||'');
+        if (t.includes('название')) return showErr('room-create-form','room-create-message',t,'title');
+        if (t.includes('длительность')) return showErr('room-create-form','room-create-message',t,'duration_minutes');
+        if (t.includes('капитал')) return showErr('room-create-form','room-create-message',t,'initial_balance');
+        if (t.includes('время')||t.includes('дата')) return showErr('room-create-form','room-create-message',t,'starts_at');
+        if (t.includes('компании')) return showErr('room-create-form','room-create-message',t,'allowed_secids');
+        showErr('room-create-form','room-create-message',t);
+    }
+};
+
+window.__dashboardScenarioSubmit = async function(e) {
+    e.preventDefault();
+    resetErr('scenario-create-form','scenario-create-message');
+    const form = document.getElementById('scenario-create-form');
+    const d = Object.fromEntries(new FormData(form).entries());
+    const s = new Date(d.start_date), en = new Date(d.end_date);
+
+    if (!d.name?.trim()) return showErr('scenario-create-form','scenario-create-message','Введите название.','name');
+    if (isNaN(s)) return showErr('scenario-create-form','scenario-create-message','Неверная дата начала.','start_date');
+    if (isNaN(en)) return showErr('scenario-create-form','scenario-create-message','Неверная дата конца.','end_date');
+    if (s >= en) { showErr('scenario-create-form','scenario-create-message','Начало раньше конца.','start_date'); return showErr('scenario-create-form','scenario-create-message','Начало раньше конца.','end_date'); }
+
+    try {
+        const res = await fetchJson('/api/scenarios', { method:'POST', body:JSON.stringify(d) });
+        showErr('scenario-create-form','scenario-create-message',`Сценарий создан: ${res.scenario.name}`, null);
+        document.getElementById('scenario-create-message').className = 'form-status positive';
+        form.reset(); await refreshScenarios(res.scenario.slug);
+    } catch(err) {
+        const t = String(err.message||'');
+        if (t.includes('начала')&&t.includes('конца')) { showErr('scenario-create-form','scenario-create-message',t,'start_date'); return showErr('scenario-create-form','scenario-create-message',t,'end_date'); }
+        showErr('scenario-create-form','scenario-create-message',t);
+    }
+};
+
+window.__dashboardRoomJoinSubmit = async function(e) {
+    e.preventDefault();
+    resetErr('room-join-form','room-join-message');
+    const form = document.getElementById('room-join-form');
+    const code = String(new FormData(form).get('room_code')||'').trim().toUpperCase();
+    if (!code) return showErr('room-join-form','room-join-message','Введите код.','room_code');
+    if (code.length < 6) return showErr('room-join-form','room-join-message','Код слишком короткий.','room_code');
+
+    try {
+        await fetchJson('/api/rooms/join', { method:'POST', body:JSON.stringify({room_code:code}) });
+        showErr('room-join-form','room-join-message','Вы вошли в комнату.', null);
+        document.getElementById('room-join-message').className = 'form-status positive';
+        form.querySelector('#room-code').style.borderColor = 'var(--success)';
+        setTimeout(() => window.location.reload(), 600);
+    } catch(err) { showErr('room-join-form','room-join-message', err.message||'Ошибка входа.','room_code'); }
+};
+
+// --- Инициализация ---
+document.addEventListener('DOMContentLoaded', () => {
+    // Регистрируем обработчики форм
+    document.getElementById('room-create-form')?.addEventListener('submit', window.__dashboardRoomSubmit);
+    document.getElementById('scenario-create-form')?.addEventListener('submit', window.__dashboardScenarioSubmit);
+    document.getElementById('room-join-form')?.addEventListener('submit', window.__dashboardRoomJoinSubmit);
+
+    // Ссылки на рейтинг
+    document.querySelectorAll('.teacher-room-leaderboard-link, .student-room-leaderboard-link').forEach(link => {
+        link.addEventListener('click', e => {
+            e.preventDefault();
+            const id = Number(link.dataset.roomId);
+            if (id) { try { window.history.replaceState({}, '', link.getAttribute('href')); } catch {} loadLeaderboard(id); }
+        });
+    });
+
+    // Закрытие комнат: с JS работаем через API, без JS сработает обычный POST формы
+    document.querySelectorAll('.room-close-form').forEach(form => {
+        form.addEventListener('submit', e => {
+            e.preventDefault();
+            const btn = form.querySelector('.room-close-btn');
+            const roomId = Number(btn?.dataset.roomId);
+            if (roomId) {
+                closeRoom(roomId);
+            }
+        });
+    });
+
+    // Загрузка данных
+    document.getElementById('room-scenario') && refreshScenarios();
+    document.getElementById('personal-stats-grid') && loadStats();
+
+    // Инициализация рейтинга — безопасное чтение ID из data-атрибута
+    const initId = getDashboardVar('initialRoomId');
+    if (Number.isFinite(initId)) {
+        loadLeaderboard(initId);
+    } else {
+        const fl = document.querySelector('.teacher-room-leaderboard-link, .student-room-leaderboard-link');
+        if (fl) loadLeaderboard(Number(fl.dataset.roomId));
+    }
+});
+</script>
+{% endblock %}
