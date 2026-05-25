@@ -382,7 +382,7 @@ def estimate_volatility_level(secid: str, days: int = 180) -> tuple[str | None, 
     annualized = (variance ** 0.5) * math.sqrt(252)
     return classify_volatility_level(annualized), round(annualized * 100, 2)
 
-
+# Поле оценки дивидендов
 def estimate_dividend_yield(secid: str, current_price: float | None = None) -> float | None:
     if not current_price or current_price <= 0:
         current_price = _fetch_live_price_for_ticker(secid, "TQBR")
